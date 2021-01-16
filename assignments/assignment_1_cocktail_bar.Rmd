@@ -32,7 +32,9 @@ Note: There are several different ways to solve these tasks, feel free to come u
 Read the cocktail dataset from: <https://github.com/nthun/cocktail-balance> You can also find the codebook there.
 
 ```{r}
-
+file_url <-  "k:\\My Documents\\Development\\R\\public_r_data_analysis_2021_fall\\data\\cocktail_data.tsv"
+# import the data!
+cockbook_data <-  read.csv(file_url,header=TRUE, sep = "\t", encoding = "utf-8")
 ```
 
 ## 2. Transform the data table and clean the ingredient variable!
@@ -40,6 +42,8 @@ Read the cocktail dataset from: <https://github.com/nthun/cocktail-balance> You 
 The ingredients are currently in a single cell for each cocktail. It would be better to put them in separate rows. Also, the variable should be cleaned of all quantities (e.g. 1/2 oz, 2 dashes, etc.), and the indicator of alcohol content (e.g. 47.3% abv). You will need to use this cleaned table in later tasks.
 
 ```{r}
+ingredients_data <- separate_rows(cockbook_data, ingredients, sep = "<br/>", convert = TRUE)
+ingredients_data <- separate_rows(ingredients_data, ingredients, sep = "<br>", convert = TRUE)
 
 ```
 
