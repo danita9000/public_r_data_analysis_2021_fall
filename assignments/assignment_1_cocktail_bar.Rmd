@@ -1,6 +1,6 @@
 ---
 title: "Assignment 1: The cocktail bar (data transformation and manipulation)"
-author: "Tamas Nagy"
+author: "Dezső Anita"
 output: html_document
 editor_options: 
   chunk_output_type: console
@@ -17,6 +17,8 @@ editor_options:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
+library(kableExtra)
+library(reshape2)
 ```
 
 # Background
@@ -107,6 +109,8 @@ list(sort(cockbook_data$ingredients, decreasing = FALSE))
 How many different ingredients you will need?
 
 ```{r}
+count(as.data.frame(table(cockbook_data$ingredients)))
+
 
 ```
 
@@ -115,7 +119,11 @@ How many different ingredients you will need?
 What are the 10 most frequently used ingredients? If there are ties, you can list more than 10.
 
 ```{r}
-
+# toping - the most 10 
+top10 <- data.frame(table(cockbook_data$ingredients))
+top10 %>% 
+  top_n(11) %>% 
+  arrange(desc(Freq))
 ```
 
 ## 6. Which cocktail(s) has/have the most ingredients?
@@ -124,24 +132,50 @@ Count the number of ingredients and filter all the cocktails that has that many.
 
 ```{r}
 
+
+name.ingr <- as.data.frame(table(cockbook_data$name))
+names(name.ingr)[names(name.ingr) == "Freq"] <- "Ingredients.Num"
+name.ingr %>% top_n(6) %>% arrange(desc(Ingredients.Num))
+
+
 ```
 
 ## 7. How many ingredients appear in only one cocktail (rare ingredient)?
 
 ```{r}
 
+sort(table(cockbook_data$ingredients), decreasing = F)
+ingredients_nbr <- cockbook_data %>%
+     group_by(ingredients) %>%
+     mutate(freq=n())%>%
+     arrange(desc(freq))
+unique_ingredients <- ingredients_nbr %>%
+          filter(freq == min(ingredients_n$freq))
+kable(n_distinct(unique_ingredients$name))
+
+
+
+
+
 ```
 
 ## 8. Which cocktail has an ingredient that is only used in one cocktail?
 
 ```{r}
+kable(str_to_lower(unique(unique_ingredients$name)))
+
+
 
 ```
 
 ## 9. What are the cocktails without rare ingredients?
 
 ```{r}
-  
+non_u_ingredients <- ingredients_nbr %>%
+     filter(freq > 1)
+kable(unique(non_u_ingredients $name))  
+
+
 ```
 
 ## 10. Create a cheat sheet for the bartender!
@@ -149,6 +183,12 @@ Count the number of ingredients and filter all the cocktails that has that many.
 Create a matrix that shows all cocktail names as rows and all ingredients as columns. When a cocktail requires an ingredient, there should be an "X" in the cell, otherwise, the cell should remain empty. Example:
 
 ```{r}
+
+
+cheat.sheet <- ingredients_data[,c(1,8)]
+require(reshape2)
+cheat.sheet1 <- dcast(cheat.sheet, name~ingredients, fill=0)
+cheat.sheet1[cheat.sheet1=="1"]<-"X"
 
 ```
 
