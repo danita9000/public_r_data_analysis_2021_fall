@@ -1,6 +1,6 @@
 ---
 title: "Assignment 3: Model comparison"
-author: "Marton Kovacs"
+author: "Anita Dezső"
 output: html_document
 editor_options: 
   chunk_output_type: console
@@ -59,8 +59,17 @@ In your discussion of the findings, briefly interpret the results of the above a
 Read the dataset used in this assignment. Pay attention to the extension of the datafile.
 
 ```{r}
-
+library(sjPlot)
+library(readxl)
+require(readxl)
+require(tidyverse)
+file_temp = tempfile(fileext = ".xlsx")
+dataURL <- "https://github.com/elte-ppk-r-course/public_r_data_analysis_2021_fall/blob/master/data/assignment_3_dataset.xlsx?raw=true"
+download.file(dataURL, destfile=file_temp, mode='wb')
+wisdom<- readxl::read_excel(file_temp)
 ```
+
+
 
 ## Data and model diagnostics 
 ### Data diagnostics
@@ -69,7 +78,32 @@ Read the dataset used in this assignment. Pay attention to the extension of the 
 Run an exploratory data analysis (EDA) to investigate the dataset.
 
 ```{r}
-
+str(wisdom)
+# Fix discrete vars
+wisdom$sex <- as.factor(wisdom$sex)
+#check colnames
+colnames(wisdom)
+# Check Nas
+table(is.na(wisdom)) # all Nas
+## Checking Means and Deviations, ranges
+#remove discrete vars
+# Identifying incorrect ranges
+require(spatstat.utils)
+pain.var <- c(1,10)
+stai.var <- c(20,80)
+pain_cat.var <- c(0 ,52)
+maas.var <- c(1,6)
+incorr <- NULL
+if(nrow(wisdom)-sum(inside.range(wisdom$pain, pain.var))> 0)
+  {incorr <- names(wisdom[2])} 
+if(nrow(wisdom)-sum(inside.range(wisdom$STAI_trait, stai.var))> 0)
+  {incorr <- append(incorr, names(wisdom[5]))}
+if(nrow(wisdom)-sum(inside.range(wisdom$pain_cat, pain_cat.var))> 0)
+  {incorr <- append(incorr, names(wisdom[6]))}
+if(nrow(wisdom)-sum(inside.range(wisdom$mindfulness, maas.var))> 0)
+  {incorr <- append(incorr, names(wisdom[9]))}
+#to be corrected
+incorr
 ```
 
 #### Correct coding errors
@@ -77,7 +111,16 @@ Run an exploratory data analysis (EDA) to investigate the dataset.
 If you find values in the dataset during the EDA, that are not correct based on the provided descriptions of the variables of the dataset please correct them here.
 
 ```{r}
-
+# omitting rows with incorrect range values
+incorr
+wisdom <- wisdom[-which(wisdom$pain > 10),]
+wisdom <- wisdom[-which(wisdom$mindfulness>6),]
+# 1 coding error in sex var.
+wisdom$sex[wisdom$sex == "woman"] <- "female"
+wisdom$sex <- factor(wisdom$sex)
+#reduce dataset for vars we actually use
+wisdom <- wisdom[,-c(1, 10:12)]
+wisdom.num <- wisdom[-c(2)] #only numericals
 ```
 
 ### Model diagnostics
@@ -86,35 +129,108 @@ If you find values in the dataset during the EDA, that are not correct based on 
 In order to test the more complex model for outliers and to test the assumptions first build the model.
 
 ```{r}
-
+#build complex model 
+model.comp <- lm(pain ~
+                   age +
+                   sex +
+                   STAI_trait +
+                   pain_cat +
+                   mindfulness +
+                   cortisol_serum +
+                   cortisol_saliva, data = wisdom)
 ```
+
 
 #### Checking for influential outliers
 
 Check for outlier values in the model.
 
 ```{r}
-
+## check Mahalanobis distance for outliers
+mahal <- mahalanobis(wisdom.num,
+                     colMeans(wisdom.num, na.rm = T),
+                     cov(wisdom.num, use = "pairwise.complete.obs"))
+## create cutoff score for extreme datapoints
+cutoff = qchisq(1-0.001, ncol(wisdom.num))
+cutoff # our cutoff score
+ncol(wisdom.num) # degrees of freedom
+mahal.out <- as.numeric(mahal > cutoff)
+table(mahal.out)
+## leverage
+k = 7 ##number of IVs in the final step
+leverage <- hatvalues(model.comp)
+cutleverage <- (2*k+2) / nrow(wisdom)
+cutleverage ##cut off
+overleverage <-  as.numeric(leverage > cutleverage)
+table(overleverage)
+## cooks
+cooks = cooks.distance(model.comp)
+cutcooks = 4 / (nrow(wisdom) - k - 1)
+cutcooks ##get the cut off
+bad.cooks = as.numeric(cooks > cutcooks)
+table(bad.cooks)
+## overall outliers
+total.out <- mahal.out + overleverage + bad.cooks
+table(total.out)
+## remove outliers that fail even on 1 criteria. We have enogh obs. not to lose much stat.power
+noout <- subset(wisdom, total.out < 1)
+## rebuilding complex model with outliers addressed
+model.comp <- lm(pain ~
+                   age +
+                   sex +
+                   STAI_trait +
+                   pain_cat +
+                   mindfulness +
+                   cortisol_serum +
+                   cortisol_saliva, data = noout)
 ```
 
+#### Additivity
+
+```{r}
+summary(model.comp, correlation = T) #cortisol variables too highly correlated
+## remove serum from model as it is the least correlated with the DV
+model.comp1 <- lm(pain ~
+                   age +
+                   sex +
+                   STAI_trait +
+                   pain_cat +
+                   mindfulness +
+                   cortisol_saliva, data = noout)
+summary(model.comp, correlation = T)
+```
+
+
 #### Checking assumptions
+
+```{r}
+## setting up vars for assumptions
+standardized <- rstudent(model.comp1) #standardized residuals
+fitted <- scale(model.comp1$fitted.values) #fitted values scaled
+```
+
 
 Check the normality assumption.
 
 ```{r}
-
+hist(standardized) # close to normal
 ```
 
 Check the linearity assumption.
 
 ```{r}
-
+qqnorm(standardized)
+abline(0,1) #close to linear
 ```
+
 
 Check the homoscedasticty assumption (homogeneity of variance).
 
 ```{r}
-
+plot(fitted, standardized) 
+abline(0,0)
+abline(v=0)
+#even distribution and shape
 ```
 
 Check the multicollinearity assumption.
@@ -126,47 +242,87 @@ https://statisticalhorizons.com/multicollinearity
 http://blog.minitab.com/blog/understanding-statistics/handling-multicollinearity-in-regression-analysis
 
 ```{r}
-
+require(car)
+vif(model.comp1)
+# all of them are below 3
 ```
 
 ### Making decision based on model diagnostics
 
 If based on the assumption tests you decide to drop a predictor variable you should do that here. Create your updated model.
 
-```{r}
+This has already been done on an as-we-go basis. Changes include:
 
-```
+  * removing outliers
+  * removing __cortisol_serum__ predictor for high correlation with __cortisol_saliva__.* **Cortisol_saliva** had better correlation with our DV 
 
 #### Checking outliers of the updated model
 
 ```{r}
-
+## check Mahalanobis distance for outliers
+mahal1 <- mahalanobis(noout[,-2],
+                     colMeans(noout[,-2], na.rm = T),
+                     cov(noout[,-2], use = "pairwise.complete.obs"))
+## create cutoff score for extreme datapoints
+cutoff1 = qchisq(1-0.001, ncol(noout))
+cutoff1 # our cutoff score
+ncol(noout) # degrees of freedom
+mahal.out1 <- as.numeric(mahal1 > cutoff1)
+table(mahal.out1)
+## leverage
+k1 = 6 ##number of IVs in the final step
+leverage1 <- hatvalues(model.comp1)
+cutleverage1 <- (2*k+2) / nrow(noout)
+cutleverage1 ##cut off
+overleverage1 <-  as.numeric(leverage1 > cutleverage1)
+table(overleverage1)
+## cooks
+cooks1 = cooks.distance(model.comp1)
+cutcooks1 = 4 / (nrow(noout) - k - 1)
+cutcooks1 ##get the cut off
+bad.cooks1 = as.numeric(cooks1 > cutcooks1)
+table(bad.cooks1)
+## overall outliers
+total.out1 <- mahal.out1 + overleverage1 + bad.cooks1
+table(total.out1)
+##no outiers that violate 2+ criteria we stick to model.comp1
 ```
 
 #### Checking assumptions of the updated model
 
+```{r}
+## setting up vars for assumptions
+standardized <- rstudent(model.comp1) #standardized residuals
+fitted <- scale(model.comp1$fitted.values) #fitted values scaled
+```
+
+
+
 Normality assumption
 
 ```{r}
-
+hist(standardized) # close to normal
 ```
 
 Linearity assumption
 
 ```{r}
-
+qqnorm(standardized)
+abline(0,1) #close to linear
 ```
 
 Homoscedasticty assumption (homogeneity of variance)
 
 ```{r}
-
+plot(fitted, standardized) 
+abline(0,0)
+abline(v=0)
 ```
 
 Multicollinearity assumption
 
 ```{r}
-
+vif(model.comp1)
 ```
 
 ## Model comparison
@@ -174,18 +330,43 @@ Multicollinearity assumption
 Create the simple model and get the results of the model that needs to be reported based on the What to report section.
 
 ```{r}
-
+##library(sjPlot)
+library(sjmisc)
+library(sjlabelled)
+require(kableExtra)
+library(broom)
+model1 <- lm(pain ~
+               sex +
+               age, data = noout)
+summary(model1)
+glance(model1)
+tab_model(model1, show.std = T, show.df = T, show.aic = T, show.stat = T)
 ```
+
 
 Create the more complex model based on the results of the model diagnostics. Also, get the results that needs to be reported based on the What to report section.
 
 ```{r}
-
+model2 <- lm(pain ~
+                   age +
+                   sex +
+                   STAI_trait +
+                   pain_cat +
+                   mindfulness +
+                   cortisol_saliva, data = noout)
+summary(model2)
+tab_model(model2, show.std = T, show.df = T, show.stat = T)
 ```
+
+
 
 Compare the two models.
 
 ```{r}
-
+anova(model1, model2)
+tab_model(model1, model2, show.std = T, show.df = T, col.order = c("est", "std.est", "ci", "p"))
+glance(model1) %>%
+  dplyr::select(adj.r.squared, sigma, AIC, BIC, p.value)
+glance(model2) %>%
+  dplyr::select(adj.r.squared, sigma, AIC, BIC, p.value)
 ```
-
